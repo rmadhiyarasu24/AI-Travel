@@ -14,6 +14,10 @@ class Settings(BaseSettings):
         "postgresql://postgres:%40713324AD055@db.byxamnetuserezhcmrlr.supabase.co:5432/postgres"
     )
 
+    # Local Ollama Configuration
+    OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen3:8b")
+
     class Config:
         case_sensitive = True
 
