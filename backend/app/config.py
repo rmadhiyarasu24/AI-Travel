@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     # Open-Meteo Weather API Base URL
     OPEN_METEO_BASE_URL: str = os.getenv("OPEN_METEO_BASE_URL", "https://api.open-meteo.com/v1/forecast")
 
+    # Open Geospatial Services Configuration
+    NOMINATIM_BASE_URL: str = os.getenv("NOMINATIM_BASE_URL", "https://nominatim.openstreetmap.org")
+    OVERPASS_BASE_URL: str = os.getenv("OVERPASS_BASE_URL", "https://overpass-api.de/api/interpreter")
+    OSRM_BASE_URL: str = os.getenv("OSRM_BASE_URL", "http://router.project-osrm.org/route/v1/driving")
+    USER_AGENT: str = "AI-Travel-Platform/1.0 (contact@aitravel.example.com)"
+
     model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
 
 settings = Settings()

@@ -60,7 +60,7 @@ class OllamaService:
         }
 
     @classmethod
-    def generate_chat_response(cls, user_message: str) -> Dict[str, Any]:
+    def generate_chat_response(cls, user_message: str, system_prompt: str = None) -> Dict[str, Any]:
         """
         Sends a user prompt to locally running qwen3:8b model via Ollama /api/chat endpoint.
         """
@@ -71,10 +71,11 @@ class OllamaService:
             }
 
         chat_url = f"{settings.OLLAMA_BASE_URL}/api/chat"
+        active_system_prompt = system_prompt or cls.SYSTEM_PROMPT
         payload = {
             "model": settings.OLLAMA_MODEL,
             "messages": [
-                {"role": "system", "content": cls.SYSTEM_PROMPT},
+                {"role": "system", "content": active_system_prompt},
                 {"role": "user", "content": user_message.strip()}
             ],
             "stream": False

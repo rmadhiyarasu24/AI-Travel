@@ -1,35 +1,82 @@
-import React, { useState } from 'react';
-import { motion } from 'motion/react';
+import React, { useState, useEffect } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import {
-  MapPin,
   Navigation,
-  Layers,
-  Sparkles,
-  Info,
-  Maximize2,
   Car,
   Clock,
-  Compass
+  MapPin,
+  Layers,
+  Sparkles
 } from 'lucide-react';
 import { ItineraryDay, ItineraryItem } from '../../types';
+
+// Fix Leaflet default icon paths in React bundlers
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
+
+// Custom category icons
+const createCustomMarker = (number: number, isSelected: boolean) => {
+  return L.divIcon({
+    className: 'custom-leaflet-marker',
+    html: `
+      <div style="
+        background-color: ${isSelected ? '#0284c7' : '#0f172a'};
+        border: 2px solid ${isSelected ? '#ffffff' : '#38bdf8'};
+        color: #ffffff;
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 13px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      ">
+        ${number}
+      </div>
+    `,
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
+  });
+};
+
+// Helper component to dynamically re-center map bounds when active day changes
+const ChangeMapView: React.FC<{ bounds: L.LatLngBoundsExpression }> = ({ bounds }) => {
+  const map = useMap();
+  useEffect(() => {
+    if (bounds) {
+      map.fitBounds(bounds, { padding: [50, 50] });
+    }
+  }, [bounds, map]);
+  return null;
+};
 
 interface InteractiveMapViewProps {
   days: ItineraryDay[];
   destinationName: string;
   className?: string;
   onSelectItem?: (item: ItineraryItem) => void;
+  osrmRouteCoordinates?: [number, number][];
 }
 
 export const InteractiveMapView: React.FC<InteractiveMapViewProps> = ({
   days,
   destinationName,
   className = '',
-  onSelectItem
+  onSelectItem,
+  osrmRouteCoordinates = []
 }) => {
   const [activeDayIndex, setActiveDayIndex] = useState<number | 'all'>('all');
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
 
-  // Extract all points with coordinates
+  // Extract all itinerary items with coordinates
   const allItemsWithCoords: (ItineraryItem & { dayNum: number; dayTitle: string })[] = [];
   days.forEach((day) => {
     day.items.forEach((item) => {
@@ -45,62 +92,41 @@ export const InteractiveMapView: React.FC<InteractiveMapViewProps> = ({
 
   const selectedPoint = allItemsWithCoords.find((p) => p.id === selectedPointId) || allItemsWithCoords[0];
 
-  // SVG coordinate mapping normalization
-  // Center roughly in simulated bounding box
+  // Default Center (Ooty, Tamil Nadu coordinates if no points)
+  const centerLat = allItemsWithCoords.length ? allItemsWithCoords[0].coordinates.lat : 11.4102;
+  const centerLng = allItemsWithCoords.length ? allItemsWithCoords[0].coordinates.lng : 76.6950;
+
+  // Build Leaflet LatLng bounds
   const lats = allItemsWithCoords.map((p) => p.coordinates.lat);
   const lngs = allItemsWithCoords.map((p) => p.coordinates.lng);
-  const minLat = lats.length ? Math.min(...lats) : 10;
-  const maxLat = lats.length ? Math.max(...lats) : 11;
-  const minLng = lngs.length ? Math.min(...lngs) : 76;
-  const maxLng = lngs.length ? Math.max(...lngs) : 77;
+  const bounds: L.LatLngBoundsExpression = lats.length > 0
+    ? [
+        [Math.min(...lats) - 0.02, Math.min(...lngs) - 0.02],
+        [Math.max(...lats) + 0.02, Math.max(...lngs) + 0.02]
+      ]
+    : [[11.40, 76.68], [11.45, 76.72]];
 
-  const latRange = Math.max(maxLat - minLat, 0.05);
-  const lngRange = Math.max(maxLng - minLng, 0.05);
-
-  const getSvgCoordinates = (lat: number, lng: number, width: number = 800, height: number = 420) => {
-    const pad = 60;
-    const x = pad + ((lng - minLng) / lngRange) * (width - pad * 2);
-    // Invert Y since SVG origin is top
-    const y = height - (pad + ((lat - minLat) / latRange) * (height - pad * 2));
-    return { x, y };
-  };
-
-  // Generate SVG path string connecting checkpoints in sequence
-  const svgWidth = 800;
-  const svgHeight = 420;
-  const routePoints = allItemsWithCoords.map((p) => getSvgCoordinates(p.coordinates.lat, p.coordinates.lng, svgWidth, svgHeight));
-  
-  let pathD = '';
-  if (routePoints.length > 0) {
-    pathD = `M ${routePoints[0].x} ${routePoints[0].y}`;
-    for (let i = 1; i < routePoints.length; i++) {
-      const prev = routePoints[i - 1];
-      const curr = routePoints[i];
-      // Subtle smooth curve
-      const cpX = (prev.x + curr.x) / 2;
-      const cpY = (prev.y + curr.y) / 2 - 15;
-      pathD += ` Q ${cpX} ${cpY} ${curr.x} ${curr.y}`;
-    }
-  }
+  // Generate Polyline points for route
+  const polylinePositions: [number, number][] = osrmRouteCoordinates.length > 0
+    ? osrmRouteCoordinates
+    : allItemsWithCoords.map((p) => [p.coordinates.lat, p.coordinates.lng]);
 
   return (
-    <div
-      className={`relative rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-900 shadow-md ${className}`}
-    >
-      {/* Top Map Header & Day Selector Bar */}
-      <div className="absolute top-4 left-4 right-4 z-20 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
-        <div className="pointer-events-auto flex items-center gap-2 bg-slate-950/80 backdrop-blur-md px-3.5 py-1.5 rounded-2xl border border-white/10 text-white shadow-lg">
+    <div className={`relative rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-900 shadow-md ${className}`}>
+      {/* Top Map Bar */}
+      <div className="absolute top-4 left-4 right-4 z-[1000] flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+        <div className="pointer-events-auto flex items-center gap-2 bg-slate-950/90 backdrop-blur-md px-3.5 py-1.5 rounded-2xl border border-white/10 text-white shadow-lg">
           <Navigation className="w-4 h-4 text-sky-400" />
           <span className="font-heading font-bold text-xs">
-            {destinationName} Route Map
+            {destinationName} Live Map (OpenStreetMap)
           </span>
           <span className="text-[11px] text-slate-400">
-            • {allItemsWithCoords.length} Waypoints
+            • {allItemsWithCoords.length} Places
           </span>
         </div>
 
-        {/* Filter by Day */}
-        <div className="pointer-events-auto flex items-center gap-1 bg-slate-950/80 backdrop-blur-md p-1 rounded-2xl border border-white/10 shadow-lg">
+        {/* Day Selector Filter */}
+        <div className="pointer-events-auto flex items-center gap-1 bg-slate-950/90 backdrop-blur-md p-1 rounded-2xl border border-white/10 shadow-lg">
           <button
             onClick={() => setActiveDayIndex('all')}
             className={`px-2.5 py-1 rounded-xl text-xs font-semibold transition-colors ${
@@ -127,131 +153,64 @@ export const InteractiveMapView: React.FC<InteractiveMapViewProps> = ({
         </div>
       </div>
 
-      {/* Interactive Map Visual Vector Canvas */}
-      <div className="relative w-full h-[420px] bg-radial from-slate-800/90 via-slate-900 to-slate-950 flex items-center justify-center overflow-hidden">
-        {/* Subtle grid pattern background */}
-        <div
-          className="absolute inset-0 opacity-15"
-          style={{
-            backgroundImage: `radial-gradient(#38bdf8 1px, transparent 1px)`,
-            backgroundSize: '24px 24px'
-          }}
-        />
-
-        {/* Contour elevation line decorative visual */}
-        <svg className="absolute inset-0 w-full h-full opacity-10 pointer-events-none">
-          <circle cx="200" cy="180" r="140" fill="none" stroke="#38bdf8" strokeWidth="1" strokeDasharray="4 4" />
-          <circle cx="200" cy="180" r="220" fill="none" stroke="#38bdf8" strokeWidth="1" strokeDasharray="4 4" />
-          <circle cx="600" cy="260" r="160" fill="none" stroke="#0284c7" strokeWidth="1" strokeDasharray="6 6" />
-        </svg>
-
-        {/* Dynamic Route SVG */}
-        <svg
-          viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-          className="w-full h-full relative z-10"
+      {/* Leaflet + OpenStreetMap Map Canvas */}
+      <div className="relative w-full h-[420px]">
+        <MapContainer
+          center={[centerLat, centerLng]}
+          zoom={13}
+          scrollWheelZoom={true}
+          style={{ width: '100%', height: '100%', borderRadius: '1.5rem' }}
         >
-          {/* Animated Waypoint Route Path */}
-          {pathD && (
-            <>
-              {/* Outer glow stroke */}
-              <path
-                d={pathD}
-                fill="none"
-                stroke="#0284c7"
-                strokeWidth="6"
-                strokeOpacity="0.3"
-                strokeLinecap="round"
-              />
-              {/* Main animated dash route */}
-              <path
-                d={pathD}
-                fill="none"
-                stroke="#38bdf8"
-                strokeWidth="2.5"
-                strokeDasharray="6 6"
-                strokeLinecap="round"
-                className="animate-pulse"
-              />
-            </>
+          <ChangeMapView bounds={bounds} />
+
+          {/* OpenStreetMap Tile Layer */}
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+
+          {/* OSRM Route Polyline Overlay */}
+          {polylinePositions.length > 1 && (
+            <Polyline
+              positions={polylinePositions}
+              pathOptions={{
+                color: '#0284c7',
+                weight: 4,
+                opacity: 0.8,
+                dashArray: '8, 8'
+              }}
+            />
           )}
 
-          {/* Interactive Checkpoint Markers */}
+          {/* POI Markers */}
           {allItemsWithCoords.map((item, index) => {
-            const coords = getSvgCoordinates(item.coordinates.lat, item.coordinates.lng, svgWidth, svgHeight);
             const isSelected = selectedPoint?.id === item.id;
-
             return (
-              <g
+              <Marker
                 key={item.id}
-                onClick={() => {
-                  setSelectedPointId(item.id);
-                  if (onSelectItem) onSelectItem(item);
+                position={[item.coordinates.lat, item.coordinates.lng]}
+                icon={createCustomMarker(index + 1, isSelected)}
+                eventHandlers={{
+                  click: () => {
+                    setSelectedPointId(item.id);
+                    if (onSelectItem) onSelectItem(item);
+                  }
                 }}
-                className="cursor-pointer group"
               >
-                {/* Outer Ripple on select */}
-                {isSelected && (
-                  <circle
-                    cx={coords.x}
-                    cy={coords.y}
-                    r="22"
-                    fill="#38bdf8"
-                    fillOpacity="0.25"
-                    className="animate-ping"
-                  />
-                )}
-
-                {/* Marker Body */}
-                <circle
-                  cx={coords.x}
-                  cy={coords.y}
-                  r={isSelected ? 14 : 11}
-                  fill={isSelected ? '#0284c7' : '#0f172a'}
-                  stroke={isSelected ? '#ffffff' : '#38bdf8'}
-                  strokeWidth={isSelected ? 2.5 : 2}
-                  className="transition-all duration-200 group-hover:scale-125"
-                />
-
-                {/* Marker Number */}
-                <text
-                  x={coords.x}
-                  y={coords.y + 4}
-                  textAnchor="middle"
-                  fill="#ffffff"
-                  fontSize={isSelected ? '10px' : '9px'}
-                  fontWeight="bold"
-                  pointerEvents="none"
-                >
-                  {index + 1}
-                </text>
-
-                {/* Marker Label */}
-                <g transform={`translate(${coords.x}, ${coords.y - 18})`}>
-                  <rect
-                    x={-((item.title.length * 3.2) + 12)}
-                    y="-16"
-                    width={(item.title.length * 6.4) + 24}
-                    height="18"
-                    rx="9"
-                    fill="rgba(15, 23, 42, 0.85)"
-                    stroke="rgba(56, 189, 248, 0.4)"
-                    strokeWidth="1"
-                  />
-                  <text
-                    x="0"
-                    y="-4"
-                    textAnchor="middle"
-                    fill="#e2e8f0"
-                    fontSize="9px"
-                    fontWeight="500"
-                  >
-                    {item.title.length > 20 ? `${item.title.slice(0, 18)}...` : item.title}
-                  </text>
-                </g>
-              </g>
+                <Popup className="custom-leaflet-popup">
+                  <div className="p-1">
+                    <span className="text-[10px] uppercase font-bold text-sky-500">
+                      Day {item.dayNum} • {item.time}
+                    </span>
+                    <h4 className="font-bold text-sm text-slate-900 mt-0.5">{item.title}</h4>
+                    <p className="text-xs text-slate-600 mt-1">{item.location}</p>
+                    <p className="text-[11px] text-slate-500 mt-1 italic">{item.description}</p>
+                  </div>
+                </Popup>
+              </Marker>
             );
           })}
-        </svg>
+        </MapContainer>
       </div>
 
       {/* Selected Point Bottom Detail Bar */}

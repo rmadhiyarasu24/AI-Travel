@@ -24,26 +24,24 @@ export const aiService = {
     req: AIPlanTripRequest,
     onProgress?: (step: string) => void
   ): Promise<AIPlanTripResponse> {
+    let liveOrchestration: any = null;
     try {
-      if (onProgress) onProgress('✨ Connecting to FastAPI AI Agent & Supabase database...');
-      const backendRes = await request<any>('/ai/plan-trip', {
+      if (onProgress) onProgress('✨ Connecting to Nominatim, Overpass API, Open-Meteo & Qwen3:8b AI Orchestrator...');
+      liveOrchestration = await request<any>('/travel/plan', {
         method: 'POST',
         body: JSON.stringify({
-          destination: req.destination,
-          start_date: req.startDate,
-          end_date: req.endDate,
-          travelers: req.travelers,
-          budget: req.budget,
-          interests: req.interests,
-          transportation: req.transportation
+          destination: req.destination || 'Ooty',
+          duration_days: calculateDaysBetween(req.startDate, req.endDate) || 3,
+          traveler_type: req.interests?.join(', ') || 'nature-loving',
+          user_prompt: `Plan a trip to ${req.destination || 'Ooty'}`
         })
       });
 
-      if (backendRes && backendRes.itinerary) {
-        if (onProgress) onProgress('✓ AI Validation Engine passed: All opening hours and travel distances verified!');
+      if (liveOrchestration && liveOrchestration.status === 'success') {
+        if (onProgress) onProgress('✓ Open Geospatial Pipeline complete: OSRM route & Open-Meteo weather verified!');
       }
     } catch (err) {
-      console.warn('[aiService] Live FastAPI call failed, switching to local AI optimizer:', err);
+      console.warn('[aiService] Live FastAPI travel orchestration fallback:', err);
     }
     const steps = [
       '✨ Analyzing destination geography and local seasonal patterns...',
