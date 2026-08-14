@@ -1,0 +1,6 @@
+{
+  "name": "Aetheria Travel AI",
+  "description": "AI-powered travel recommendation and tourist services platform for personalized itineraries, destination discovery, smart booking suggestions, and interactive trip management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
