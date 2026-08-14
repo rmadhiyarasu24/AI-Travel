@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.api import auth, destinations, trips, ai
+from app.api import auth, destinations, trips, ai, weather
 from app.api.services_api import hotels_router, restaurants_router, activities_router
 
 app = FastAPI(
@@ -27,6 +27,7 @@ app.include_router(hotels_router)
 app.include_router(restaurants_router)
 app.include_router(activities_router)
 app.include_router(ai.router)
+app.include_router(weather.router)
 
 @app.get("/")
 def root():

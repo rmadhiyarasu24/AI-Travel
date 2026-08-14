@@ -32,15 +32,9 @@ class TravelTools:
         ]
 
     @staticmethod
-    def get_weather(destination_name: str) -> Dict[str, Any]:
-        # Real-time weather API adapter tool
-        return {
-            "destination": destination_name,
-            "condition": "Sunny / Pleasant",
-            "temperature_celsius": 18.5,
-            "humidity": "65%",
-            "suitability": "Excellent"
-        }
+    def get_weather(db: Session, destination_name: str, forecast_date: str = None) -> Dict[str, Any]:
+        from app.services.weather_service import WeatherService
+        return WeatherService.get_weather_by_destination(db, destination_name, forecast_date)
 
     @staticmethod
     def search_hotels(db: Session, destination_id: str = None) -> List[Dict[str, Any]]:

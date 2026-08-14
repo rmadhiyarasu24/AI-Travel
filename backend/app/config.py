@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen3:8b")
 
+    # Open-Meteo Weather API Base URL
+    OPEN_METEO_BASE_URL: str = os.getenv("OPEN_METEO_BASE_URL", "https://api.open-meteo.com/v1/forecast")
+
     model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
 
 settings = Settings()
