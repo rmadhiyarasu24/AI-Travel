@@ -11,7 +11,7 @@ class TravelOrchestrator:
     """
     AI Travel Orchestrator powered by Qwen3:8b + Open Geospatial Tool Pipeline.
     Integrates Nominatim, Overpass API, Open-Meteo, OSRM, and Ollama Qwen3:8b.
-    Ensures Qwen3:8b never fabricates coordinates, weather, or routing distances.
+    Computes day-wise route legs and Google Maps navigation redirection data.
     """
 
     @classmethod
@@ -28,7 +28,7 @@ class TravelOrchestrator:
         1. Geocode location via Nominatim
         2. Fetch real POIs via Overpass API
         3. Fetch live weather via Open-Meteo API
-        4. Calculate driving distances and route geometry via OSRM
+        4. Calculate driving distances and route geometry via OSRM (total + per-day legs)
         5. Pass real geospatial context to Qwen3:8b for structured itinerary synthesis
         """
         target_dest = destination.strip() if destination else "Ooty"
@@ -49,12 +49,34 @@ class TravelOrchestrator:
             location_name=display_name
         )
 
-        # 4. Calculate Driving Routes between POIs via OSRM
-        waypoints = [{"latitude": lat, "longitude": lng}]
+        # 4. Calculate Driving Routes (Total + Day-Wise Legs via OSRM)
+        waypoints_total = [{"latitude": lat, "longitude": lng}]
         for p in pois[:6]:
-            waypoints.append({"latitude": p["latitude"], "longitude": p["longitude"]})
+            waypoints_total.append({"latitude": p["latitude"], "longitude": p["longitude"]})
 
-        route_info = OSRMService.calculate_route(waypoints)
+        total_route_info = OSRMService.calculate_route(waypoints_total)
+
+        # Compute per-day routes
+        day_routes = {}
+        items_per_day = max(1, len(pois) // duration_days)
+        
+        for day in range(1, duration_days + 1):
+            start_idx = (day - 1) * items_per_day
+            end_idx = start_idx + items_per_day if day < duration_days else len(pois)
+            day_pois = pois[start_idx:end_idx] if pois else []
+            
+            day_wps = [{"latitude": lat, "longitude": lng}]
+            for dp in day_pois:
+                day_wps.append({"latitude": dp["latitude"], "longitude": dp["longitude"]})
+            
+            day_route = OSRMService.calculate_route(day_wps)
+            day_routes[str(day)] = {
+                "day_number": day,
+                "places": day_pois,
+                "distance_km": day_route.get("distance_km", 0.0),
+                "duration_minutes": day_route.get("duration_minutes", 0),
+                "coordinates": day_route.get("route_coordinates", [])
+            }
 
         # 5. Build AI Context for Qwen3:8b Orchestrator
         poi_summary = "\n".join([
@@ -68,7 +90,7 @@ You MUST generate a structured, concise {duration_days}-day travel itinerary for
 REAL DATA PROVIDED BY BACKEND TOOLS (DO NOT ALTER COORDINATES OR DISTANCES):
 - Destination: {display_name} (Lat: {lat}, Lng: {lng})
 - Live Open-Meteo Weather: {weather_info.get('temperature')}°C, {weather_info.get('weather_condition')}. Travel Advice: {weather_info.get('travel_advice')}
-- Total Route Distance (OSRM): {route_info.get('distance_km')} km (~{route_info.get('duration_minutes')} mins driving)
+- Total Route Distance (OSRM): {total_route_info.get('distance_km')} km (~{total_route_info.get('duration_minutes')} mins driving)
 
 VERIFIED REAL TOURIST PLACES (FROM OPENSTREETMAP):
 {poi_summary}
@@ -100,10 +122,11 @@ INSTRUCTIONS:
             "weather": weather_info,
             "places": pois,
             "route": {
-                "distance_km": route_info.get("distance_km", 0.0),
-                "duration_minutes": route_info.get("duration_minutes", 0),
-                "coordinates": route_info.get("route_coordinates", [])
+                "distance_km": total_route_info.get("distance_km", 0.0),
+                "duration_minutes": total_route_info.get("duration_minutes", 0),
+                "coordinates": total_route_info.get("route_coordinates", [])
             },
+            "day_routes": day_routes,
             "itinerary_markdown": itinerary_text,
             "model_used": "qwen3:8b"
         }

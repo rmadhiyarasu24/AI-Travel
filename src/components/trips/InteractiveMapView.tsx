@@ -6,11 +6,13 @@ import {
   Navigation,
   Car,
   Clock,
+  ExternalLink,
   MapPin,
-  Layers,
-  Sparkles
+  Compass,
+  ArrowRight
 } from 'lucide-react';
 import { ItineraryDay, ItineraryItem } from '../../types';
+import { generateGoogleMapsDirUrl } from '../../utils/googleMapsUrl';
 
 // Fix Leaflet default icon paths in React bundlers
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -20,7 +22,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
-// Custom category icons
+// Custom category markers
 const createCustomMarker = (number: number, isSelected: boolean) => {
   return L.divIcon({
     className: 'custom-leaflet-marker',
@@ -76,12 +78,12 @@ export const InteractiveMapView: React.FC<InteractiveMapViewProps> = ({
   const [activeDayIndex, setActiveDayIndex] = useState<number | 'all'>('all');
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
 
-  // Extract all itinerary items with coordinates
-  const allItemsWithCoords: (ItineraryItem & { dayNum: number; dayTitle: string })[] = [];
+  // Extract all itinerary items with coordinates for the selected day filter
+  const activeItemsWithCoords: (ItineraryItem & { dayNum: number; dayTitle: string })[] = [];
   days.forEach((day) => {
     day.items.forEach((item) => {
       if (item.coordinates && (activeDayIndex === 'all' || activeDayIndex === day.dayNumber)) {
-        allItemsWithCoords.push({
+        activeItemsWithCoords.push({
           ...item,
           dayNum: day.dayNumber,
           dayTitle: day.title
@@ -90,15 +92,15 @@ export const InteractiveMapView: React.FC<InteractiveMapViewProps> = ({
     });
   });
 
-  const selectedPoint = allItemsWithCoords.find((p) => p.id === selectedPointId) || allItemsWithCoords[0];
+  const selectedPoint = activeItemsWithCoords.find((p) => p.id === selectedPointId) || activeItemsWithCoords[0];
 
   // Default Center (Ooty, Tamil Nadu coordinates if no points)
-  const centerLat = allItemsWithCoords.length ? allItemsWithCoords[0].coordinates.lat : 11.4102;
-  const centerLng = allItemsWithCoords.length ? allItemsWithCoords[0].coordinates.lng : 76.6950;
+  const centerLat = activeItemsWithCoords.length ? activeItemsWithCoords[0].coordinates.lat : 11.4102;
+  const centerLng = activeItemsWithCoords.length ? activeItemsWithCoords[0].coordinates.lng : 76.6950;
 
   // Build Leaflet LatLng bounds
-  const lats = allItemsWithCoords.map((p) => p.coordinates.lat);
-  const lngs = allItemsWithCoords.map((p) => p.coordinates.lng);
+  const lats = activeItemsWithCoords.map((p) => p.coordinates.lat);
+  const lngs = activeItemsWithCoords.map((p) => p.coordinates.lng);
   const bounds: L.LatLngBoundsExpression = lats.length > 0
     ? [
         [Math.min(...lats) - 0.02, Math.min(...lngs) - 0.02],
@@ -106,32 +108,45 @@ export const InteractiveMapView: React.FC<InteractiveMapViewProps> = ({
       ]
     : [[11.40, 76.68], [11.45, 76.72]];
 
-  // Generate Polyline points for route
-  const polylinePositions: [number, number][] = osrmRouteCoordinates.length > 0
+  // Generate Polyline points for selected day's route
+  const polylinePositions: [number, number][] = osrmRouteCoordinates.length > 0 && activeDayIndex === 'all'
     ? osrmRouteCoordinates
-    : allItemsWithCoords.map((p) => [p.coordinates.lat, p.coordinates.lng]);
+    : activeItemsWithCoords.map((p) => [p.coordinates.lat, p.coordinates.lng]);
+
+  // Calculate day-specific route totals
+  const totalDayDistanceKm = activeItemsWithCoords.reduce((sum, item) => sum + (item.distanceFromPrevKm || 0), 0);
+  const totalDayTravelMins = activeItemsWithCoords.reduce((sum, item) => sum + (item.travelDurationMin || 0), 0);
+
+  // Generate Google Maps Directions URL for selected day's stops
+  const googleMapsStops = activeItemsWithCoords.map((item) => ({
+    latitude: item.coordinates.lat,
+    longitude: item.coordinates.lng,
+    name: item.title
+  }));
+
+  const googleMapsDirUrl = generateGoogleMapsDirUrl(googleMapsStops);
 
   return (
     <div className={`relative rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-900 shadow-md ${className}`}>
-      {/* Top Map Bar */}
+      {/* Top Map Bar & Day Selector Controls */}
       <div className="absolute top-4 left-4 right-4 z-[1000] flex flex-wrap items-center justify-between gap-2 pointer-events-none">
         <div className="pointer-events-auto flex items-center gap-2 bg-slate-950/90 backdrop-blur-md px-3.5 py-1.5 rounded-2xl border border-white/10 text-white shadow-lg">
           <Navigation className="w-4 h-4 text-sky-400" />
           <span className="font-heading font-bold text-xs">
-            {destinationName} Live Map (OpenStreetMap)
+            {destinationName} {activeDayIndex === 'all' ? 'Full Route' : `Day ${activeDayIndex}`} Map
           </span>
           <span className="text-[11px] text-slate-400">
-            • {allItemsWithCoords.length} Places
+            • {activeItemsWithCoords.length} Stops
           </span>
         </div>
 
-        {/* Day Selector Filter */}
+        {/* Day Selector Pills */}
         <div className="pointer-events-auto flex items-center gap-1 bg-slate-950/90 backdrop-blur-md p-1 rounded-2xl border border-white/10 shadow-lg">
           <button
             onClick={() => setActiveDayIndex('all')}
-            className={`px-2.5 py-1 rounded-xl text-xs font-semibold transition-colors ${
+            className={`px-3 py-1 rounded-xl text-xs font-semibold transition-colors ${
               activeDayIndex === 'all'
-                ? 'bg-sky-500 text-white'
+                ? 'bg-sky-500 text-white shadow-md'
                 : 'text-slate-300 hover:text-white'
             }`}
           >
@@ -141,9 +156,9 @@ export const InteractiveMapView: React.FC<InteractiveMapViewProps> = ({
             <button
               key={day.dayNumber}
               onClick={() => setActiveDayIndex(day.dayNumber)}
-              className={`px-2.5 py-1 rounded-xl text-xs font-semibold transition-colors ${
+              className={`px-3 py-1 rounded-xl text-xs font-semibold transition-colors ${
                 activeDayIndex === day.dayNumber
-                  ? 'bg-sky-500 text-white'
+                  ? 'bg-sky-500 text-white shadow-md'
                   : 'text-slate-300 hover:text-white'
               }`}
             >
@@ -182,8 +197,8 @@ export const InteractiveMapView: React.FC<InteractiveMapViewProps> = ({
             />
           )}
 
-          {/* POI Markers */}
-          {allItemsWithCoords.map((item, index) => {
+          {/* Day-specific POI Markers */}
+          {activeItemsWithCoords.map((item, index) => {
             const isSelected = selectedPoint?.id === item.id;
             return (
               <Marker
@@ -200,7 +215,7 @@ export const InteractiveMapView: React.FC<InteractiveMapViewProps> = ({
                 <Popup className="custom-leaflet-popup">
                   <div className="p-1">
                     <span className="text-[10px] uppercase font-bold text-sky-500">
-                      Day {item.dayNum} • {item.time}
+                      Day {item.dayNum} • Stop {index + 1}
                     </span>
                     <h4 className="font-bold text-sm text-slate-900 mt-0.5">{item.title}</h4>
                     <p className="text-xs text-slate-600 mt-1">{item.location}</p>
@@ -213,45 +228,50 @@ export const InteractiveMapView: React.FC<InteractiveMapViewProps> = ({
         </MapContainer>
       </div>
 
-      {/* Selected Point Bottom Detail Bar */}
-      {selectedPoint && (
-        <div className="p-4 bg-slate-950 border-t border-slate-800 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 z-20 relative">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center justify-center shrink-0 font-bold font-heading">
-              {allItemsWithCoords.findIndex((p) => p.id === selectedPoint.id) + 1}
+      {/* Day-Wise Route Summary & Google Maps Navigation Redirection Bar */}
+      <div className="p-4 bg-slate-950 border-t border-slate-800 text-white flex flex-col md:flex-row md:items-center justify-between gap-4 z-20 relative">
+        {/* Left: Day Metrics & Ordered Stops Trail */}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-4 text-xs">
+            <div className="flex items-center gap-1.5 text-sky-400 font-bold">
+              <Compass className="w-4 h-4" />
+              <span>{activeDayIndex === 'all' ? 'Full Trip Metrics' : `Day ${activeDayIndex} Metrics`}:</span>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-sky-400">
-                  Day {selectedPoint.dayNum} • {selectedPoint.time}
-                </span>
-                <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
-                  {selectedPoint.type}
-                </span>
-              </div>
-              <h4 className="font-heading font-bold text-sm text-slate-100 line-clamp-1">
-                {selectedPoint.title}
-              </h4>
-              <p className="text-xs text-slate-400 line-clamp-1">
-                {selectedPoint.location}
-              </p>
+            <div className="flex items-center gap-1 text-slate-300">
+              <Car className="w-3.5 h-3.5 text-sky-400" />
+              <span>{totalDayDistanceKm.toFixed(1)} km total</span>
+            </div>
+            <div className="flex items-center gap-1 text-slate-300">
+              <Clock className="w-3.5 h-3.5 text-sky-400" />
+              <span>{totalDayTravelMins} mins transit</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-4 text-xs text-slate-400 shrink-0">
-            {selectedPoint.travelDurationMin > 0 && (
-              <div className="flex items-center gap-1 text-slate-300">
-                <Car className="w-3.5 h-3.5 text-sky-400" />
-                <span>{selectedPoint.travelDurationMin} min transit ({selectedPoint.distanceFromPrevKm} km)</span>
-              </div>
-            )}
-            <div className="flex items-center gap-1 text-slate-300">
-              <Clock className="w-3.5 h-3.5 text-sky-400" />
-              <span>{selectedPoint.durationHours} hrs duration</span>
-            </div>
+          {/* Ordered Stops Trail */}
+          <div className="flex items-center gap-1.5 text-xs text-slate-400 overflow-x-auto py-0.5">
+            <span className="font-semibold text-slate-300 shrink-0">Stops:</span>
+            {activeItemsWithCoords.map((item, idx) => (
+              <React.Fragment key={item.id}>
+                {idx > 0 && <ArrowRight className="w-3 h-3 text-slate-600 shrink-0" />}
+                <span className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800 text-slate-200 text-[11px] shrink-0">
+                  {idx + 1}. {item.title.length > 20 ? `${item.title.slice(0, 18)}...` : item.title}
+                </span>
+              </React.Fragment>
+            ))}
           </div>
         </div>
-      )}
+
+        {/* Right: External Google Maps Redirection Button */}
+        <a
+          href={googleMapsDirUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-semibold text-xs transition-all shadow-md shrink-0"
+        >
+          <span>Open {activeDayIndex === 'all' ? 'All Stops' : `Day ${activeDayIndex}`} in Google Maps</span>
+          <ExternalLink className="w-3.5 h-3.5" />
+        </a>
+      </div>
     </div>
   );
 };
