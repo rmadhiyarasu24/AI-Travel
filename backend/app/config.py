@@ -1,5 +1,5 @@
 import os
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "AI-Powered Travel Recommendation Platform"
@@ -18,7 +18,6 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen3:8b")
 
-    class Config:
-        case_sensitive = True
+    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
 
 settings = Settings()
