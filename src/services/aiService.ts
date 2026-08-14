@@ -32,10 +32,10 @@ export const aiService = {
           destination: req.destination,
           start_date: req.startDate,
           end_date: req.endDate,
-          travelers: req.travelersCount,
-          budget: req.totalBudget,
+          travelers: req.travelers,
+          budget: req.budget,
           interests: req.interests,
-          transportation: req.transportationMode
+          transportation: req.transportation
         })
       });
 

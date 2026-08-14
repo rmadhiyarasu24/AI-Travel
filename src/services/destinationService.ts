@@ -7,20 +7,26 @@ export const destinationService = {
     try {
       const liveData = await request<any[]>('/destinations');
       if (liveData && Array.isArray(liveData) && liveData.length > 0) {
-        return liveData.map((d) => ({
+        return liveData.map((d): Destination => ({
           id: d.id,
           name: d.name,
           stateOrCountry: d.location,
-          region: d.category,
-          imageUrl: d.image_url || 'https://images.unsplash.com/photo-1544644181-1484b3fdfc62?auto=format&fit=crop&w=800&q=80',
+          region: (d.category === 'Beach' ? 'South India' : (d.category === 'Cultural' ? 'International' : 'South India')) as any,
+          description: d.description,
+          tagline: d.description ? (d.description.slice(0, 60) + '...') : 'Scenic destination',
+          image: d.image_url || 'https://images.unsplash.com/photo-1544644181-1484b3fdfc62?auto=format&fit=crop&w=800&q=80',
+          gallery: [d.image_url || 'https://images.unsplash.com/photo-1544644181-1484b3fdfc62?auto=format&fit=crop&w=800&q=80'],
           rating: Number(d.rating) || 4.5,
           reviewCount: 128,
-          description: d.description,
           bestTimeToVisit: d.best_time_to_visit || 'Year-round',
-          averageDailyCost: Number(d.average_daily_cost) || 3500,
-          coordinates: d.coordinates || { lat: 11.4102, lng: 76.695 },
+          startingBudget: Number(d.average_daily_cost) || 3500,
+          idealDurationDays: 3,
+          climate: 'Cool / Mountain',
           tags: [d.category || 'Nature', 'Popular'],
-          popularActivities: ['Sightseeing', 'Photography', 'Boating']
+          popularActivities: ['Sightseeing', 'Photography', 'Boating'],
+          coordinates: d.coordinates || { lat: 11.4102, lng: 76.695 },
+          highlights: ['Scenic Views', 'Local Culture', 'Culinary Experiences'],
+          topAttractions: ['Central Park', 'Historical Museum', 'Scenic Lookout']
         }));
       }
     } catch (err) {
