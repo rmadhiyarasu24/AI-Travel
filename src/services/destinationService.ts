@@ -1,10 +1,31 @@
 import { Destination } from '../types';
 import { mockDestinations } from '../data/destinations';
+import { request } from './apiClient';
 
 export const destinationService = {
   async getAll(): Promise<Destination[]> {
-    // Simulates slight network latency
-    await new Promise((r) => setTimeout(r, 80));
+    try {
+      const liveData = await request<any[]>('/destinations');
+      if (liveData && Array.isArray(liveData) && liveData.length > 0) {
+        return liveData.map((d) => ({
+          id: d.id,
+          name: d.name,
+          stateOrCountry: d.location,
+          region: d.category,
+          imageUrl: d.image_url || 'https://images.unsplash.com/photo-1544644181-1484b3fdfc62?auto=format&fit=crop&w=800&q=80',
+          rating: Number(d.rating) || 4.5,
+          reviewCount: 128,
+          description: d.description,
+          bestTimeToVisit: d.best_time_to_visit || 'Year-round',
+          averageDailyCost: Number(d.average_daily_cost) || 3500,
+          coordinates: d.coordinates || { lat: 11.4102, lng: 76.695 },
+          tags: [d.category || 'Nature', 'Popular'],
+          popularActivities: ['Sightseeing', 'Photography', 'Boating']
+        }));
+      }
+    } catch (err) {
+      console.warn('Using local fallback for destinations:', err);
+    }
     return mockDestinations;
   },
 
@@ -13,9 +34,9 @@ export const destinationService = {
   },
 
   async getById(id: string): Promise<Destination | null> {
-    await new Promise((r) => setTimeout(r, 60));
+    const list = await this.getAll();
     const normalized = id.toLowerCase();
-    const dest = mockDestinations.find(
+    const dest = list.find(
       (d) => d.id.toLowerCase() === normalized || d.name.toLowerCase() === normalized
     );
     return dest || null;
@@ -26,21 +47,17 @@ export const destinationService = {
   },
 
   async search(query: string, region?: string): Promise<Destination[]> {
-    await new Promise((r) => setTimeout(r, 80));
-    let results = [...mockDestinations];
-    
+    let results = await this.getAll();
     if (region && region !== 'All') {
       results = results.filter((d) => d.region === region);
     }
-    
     if (query.trim()) {
       const q = query.toLowerCase();
       results = results.filter(
         (d) =>
           d.name.toLowerCase().includes(q) ||
           d.stateOrCountry.toLowerCase().includes(q) ||
-          d.tags.some((t) => t.toLowerCase().includes(q)) ||
-          d.popularActivities.some((a) => a.toLowerCase().includes(q))
+          d.tags.some((t) => t.toLowerCase().includes(q))
       );
     }
     return results;
