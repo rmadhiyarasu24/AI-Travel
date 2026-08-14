@@ -8,13 +8,13 @@ class OllamaService:
     """
     Dedicated service for handling communication between FastAPI and local Ollama server.
     Target Model: qwen3:8b (http://localhost:11434)
+    Optimized for ultra-fast generation speed on CPU.
     """
 
     SYSTEM_PROMPT = (
         "You are an expert AI Travel Planning Assistant. You help travelers discover destinations, "
         "suggest trip itineraries, estimate trip durations, consider budget preferences, and recommend activities. "
-        "Please note: You provide suggestions based on general travel knowledge. "
-        "Be concise, clear, helpful, and friendly."
+        "Be concise, clear, bulleted, helpful, and ultra-fast."
     )
 
     @classmethod
@@ -30,7 +30,6 @@ class OllamaService:
                     data = json.loads(response.read().decode("utf-8"))
                     models = [m.get("name") for m in data.get("models", [])]
                     
-                    # Check if requested model exists
                     model_found = any(settings.OLLAMA_MODEL in m for m in models)
                     if model_found:
                         return {
@@ -63,6 +62,7 @@ class OllamaService:
     def generate_chat_response(cls, user_message: str, system_prompt: str = None) -> Dict[str, Any]:
         """
         Sends a user prompt to locally running qwen3:8b model via Ollama /api/chat endpoint.
+        Optimized with num_predict=180 for lightning fast generation.
         """
         if not user_message or not user_message.strip():
             return {
@@ -78,7 +78,12 @@ class OllamaService:
                 {"role": "system", "content": active_system_prompt},
                 {"role": "user", "content": user_message.strip()}
             ],
-            "stream": False
+            "stream": False,
+            "options": {
+                "num_predict": 180,
+                "temperature": 0.3,
+                "top_p": 0.8
+            }
         }
 
         try:
@@ -90,7 +95,7 @@ class OllamaService:
                 method="POST"
             )
 
-            with urllib.request.urlopen(req, timeout=300) as response:
+            with urllib.request.urlopen(req, timeout=60) as response:
                 if response.status == 200:
                     res_body = json.loads(response.read().decode("utf-8"))
                     msg_obj = res_body.get("message", {})

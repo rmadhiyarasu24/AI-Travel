@@ -47,19 +47,7 @@ export const aiService = {
       console.warn('[aiService] Live FastAPI travel orchestration fallback:', err);
     }
 
-    const steps = [
-      `✨ Analyzing ${destName} geography and regional climate...`,
-      '✓ Checking Open-Meteo weather forecast & optimal daylight hours...',
-      '✓ Querying OpenStreetMap for authentic attractions & scenic routes...',
-      '✓ Evaluating local dining and boutique stays...',
-      '✓ Calculating OSRM driving transit intervals...',
-      '✨ Finalizing your personalized Qwen3:8b AI travel itinerary...'
-    ];
-
-    for (let i = 0; i < steps.length; i++) {
-      if (onProgress) onProgress(steps[i]);
-      await new Promise((r) => setTimeout(r, 300));
-    }
+    if (onProgress) onProgress(`✨ Synthesizing itinerary for ${destName}...`);
 
     const baseBudget = req.budget || 25000;
     const hotelBudget = Math.round(baseBudget * 0.38);
